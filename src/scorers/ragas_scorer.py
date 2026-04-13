@@ -7,8 +7,11 @@ import anthropic
 from ragas import evaluate
 from ragas.dataset_schema import EvaluationDataset, SingleTurnSample
 from ragas.llms import llm_factory
-from ragas.metrics.collections.faithfulness import Faithfulness
 from ragas.metrics.collections.answer_relevancy import AnswerRelevancy
+from ragas.metrics.collections.context_precision import ContextPrecision
+from ragas.metrics.collections.context_recall import ContextRecall
+from ragas.metrics.collections.factual_correctness import FactualCorrectness
+from ragas.metrics.collections.faithfulness import Faithfulness
 
 from src.config import settings
 from src.evaluators.claude_evaluator import EvalResult
@@ -32,6 +35,9 @@ class RagasScorer:
         self.metrics = [
             Faithfulness(llm=self.llm),
             AnswerRelevancy(llm=self.llm),
+            ContextPrecision(llm=self.llm),
+            ContextRecall(llm=self.llm),
+            FactualCorrectness(llm=self.llm),
         ]
 
     def _build_dataset(self, eval_results: List[EvalResult]) -> EvaluationDataset:
