@@ -1,0 +1,32 @@
+[
+  {
+    "id": "q1",
+    "question": "What is retrieval-augmented generation (RAG)?",
+    "expected_answer": "RAG is a technique that combines a retrieval system with a generative model. It retrieves relevant documents from a knowledge base and provides them as context to the LLM, improving factual accuracy and reducing hallucinations.",
+    "context": "RAG architectures typically use vector databases for semantic search over document embeddings.",
+    "metadata": {
+      "category": "architecture",
+      "difficulty": "medium"
+    }
+  },
+  {
+    "id": "q2",
+    "question": "Explain the difference between fine-tuning and prompt engineering.",
+    "expected_answer": "Fine-tuning modifies model weights by training on domain-specific data, permanently altering model behavior. Prompt engineering crafts input instructions to guide model output without changing weights, offering faster iteration but less control over deep behavior.",
+    "context": "Both techniques are used to adapt LLMs to specific tasks, but they differ in cost, latency, and flexibility.",
+    "metadata": {
+      "category": "techniques",
+      "difficulty": "easy"
+    }
+  },
+  {
+    "id": "q3",
+    "question": "What are the key metrics for evaluating LLM output quality?",
+    "expected_answer": "Key metrics include faithfulness (factual consistency with source), answer relevancy (how well the answer addresses the question), context precision (relevance of retrieved context), and context recall (coverage of required information in retrieved context).",
+    "context": "RAGAS provides automated evaluation metrics for RAG pipelines.",
+    "metadata": {
+      "category": "evaluation",
+      "difficulty": "hard"
+    }
+  }
+]
