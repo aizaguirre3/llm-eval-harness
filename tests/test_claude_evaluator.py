@@ -25,9 +25,10 @@ def sample_qa():
     )
 
 
+@patch("src.evaluators.claude_evaluator.anthropic.AsyncAnthropic")
 @patch("src.evaluators.claude_evaluator.anthropic.Anthropic")
 @patch("src.evaluators.claude_evaluator.settings")
-def test_evaluate_single(mock_settings, mock_anthropic_cls, mock_response, sample_qa):
+def test_evaluate_single(mock_settings, mock_anthropic_cls, mock_async_cls, mock_response, sample_qa):
     mock_settings.anthropic_api_key = "sk-test"
     mock_settings.default_model = "claude-sonnet-4-20250514"
     mock_settings.langfuse_public_key = ""
@@ -51,9 +52,10 @@ def test_evaluate_single(mock_settings, mock_anthropic_cls, mock_response, sampl
     assert "European geography" in call_kwargs["messages"][0]["content"]
 
 
+@patch("src.evaluators.claude_evaluator.anthropic.AsyncAnthropic")
 @patch("src.evaluators.claude_evaluator.anthropic.Anthropic")
 @patch("src.evaluators.claude_evaluator.settings")
-def test_evaluate_batch(mock_settings, mock_anthropic_cls, mock_response):
+def test_evaluate_batch(mock_settings, mock_anthropic_cls, mock_async_cls, mock_response):
     mock_settings.anthropic_api_key = "sk-test"
     mock_settings.default_model = "claude-sonnet-4-20250514"
     mock_settings.langfuse_public_key = ""

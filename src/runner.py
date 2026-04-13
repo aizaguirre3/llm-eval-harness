@@ -21,6 +21,7 @@ def run_eval(
     category: str = "",
     skip_scoring: bool = False,
     output_json: str = "",
+    concurrent: bool = False,
 ) -> dict:
     """Run the full eval pipeline: load -> evaluate -> score -> export."""
 
@@ -43,8 +44,12 @@ def run_eval(
         evaluator_kwargs["model"] = model
     evaluator = ClaudeEvaluator(**evaluator_kwargs)
 
-    print(f"\nEvaluating with {evaluator.model}...")
-    eval_results = evaluator.evaluate_batch(qa_pairs)
+    if concurrent:
+        print(f"\nEvaluating with {evaluator.model} (concurrent, max {evaluator.max_concurrent} requests)...")
+        eval_results = evaluator.evaluate_batch_concurrent(qa_pairs)
+    else:
+        print(f"\nEvaluating with {evaluator.model}...")
+        eval_results = evaluator.evaluate_batch(qa_pairs)
     evaluator.flush()
 
     _print_eval_results(eval_results)
@@ -192,6 +197,11 @@ def main() -> None:
         help="Output JSON file path (default: results/eval_<timestamp>.json)",
     )
     parser.add_argument(
+        "--concurrent",
+        action="store_true",
+        help="Run evaluations concurrently (faster, uses async API calls)",
+    )
+    parser.add_argument(
         "--list-datasets",
         action="store_true",
         help="List available datasets and exit",
@@ -213,6 +223,7 @@ def main() -> None:
         category=args.category,
         skip_scoring=args.skip_scoring,
         output_json=args.output,
+        concurrent=args.concurrent,
     )
 
 

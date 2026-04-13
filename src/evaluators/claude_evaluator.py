@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass
 from typing import List, Optional
@@ -29,11 +30,14 @@ class ClaudeEvaluator:
         model: str = settings.default_model,
         system_prompt: str = "Answer the question concisely and accurately.",
         max_tokens: int = 1024,
+        max_concurrent: int = 5,
     ):
         self.model = model
         self.system_prompt = system_prompt
         self.max_tokens = max_tokens
+        self.max_concurrent = max_concurrent
         self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self.async_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         self._init_langfuse()
 
     def _init_langfuse(self) -> None:
@@ -67,10 +71,13 @@ class ClaudeEvaluator:
             },
         )
 
-    def evaluate_single(self, qa: QAPair) -> EvalResult:
-        user_content = qa.question
+    def _build_user_content(self, qa: QAPair) -> str:
         if qa.context:
-            user_content = f"Context: {qa.context}\n\nQuestion: {qa.question}"
+            return f"Context: {qa.context}\n\nQuestion: {qa.question}"
+        return qa.question
+
+    def evaluate_single(self, qa: QAPair) -> EvalResult:
+        user_content = self._build_user_content(qa)
 
         start = time.perf_counter()
         response = self.client.messages.create(
@@ -94,11 +101,49 @@ class ClaudeEvaluator:
         return result
 
     def evaluate_batch(self, qa_pairs: List[QAPair]) -> List[EvalResult]:
+        """Evaluate a batch of Q&A pairs sequentially."""
         results = []
         for qa in qa_pairs:
             result = self.evaluate_single(qa)
             results.append(result)
         return results
+
+    async def _evaluate_single_async(
+        self, qa: QAPair, semaphore: asyncio.Semaphore
+    ) -> EvalResult:
+        async with semaphore:
+            user_content = self._build_user_content(qa)
+
+            start = time.perf_counter()
+            response = await self.async_client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=self.system_prompt,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            latency_ms = (time.perf_counter() - start) * 1000
+
+            result = EvalResult(
+                qa_pair=qa,
+                actual_answer=response.content[0].text,
+                model=self.model,
+                latency_ms=latency_ms,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+            )
+
+            self._trace_generation("eval_async", qa, result)
+            return result
+
+    async def evaluate_batch_async(self, qa_pairs: List[QAPair]) -> List[EvalResult]:
+        """Evaluate a batch of Q&A pairs concurrently with rate limiting."""
+        semaphore = asyncio.Semaphore(self.max_concurrent)
+        tasks = [self._evaluate_single_async(qa, semaphore) for qa in qa_pairs]
+        return await asyncio.gather(*tasks)
+
+    def evaluate_batch_concurrent(self, qa_pairs: List[QAPair]) -> List[EvalResult]:
+        """Evaluate a batch concurrently (sync wrapper for async batch)."""
+        return asyncio.run(self.evaluate_batch_async(qa_pairs))
 
     def flush(self) -> None:
         """Flush Langfuse traces. Call after eval runs complete."""
