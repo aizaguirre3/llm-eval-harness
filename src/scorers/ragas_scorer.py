@@ -1,20 +1,25 @@
 from __future__ import annotations
 
+import math
+import warnings
 from dataclasses import dataclass
 from typing import Dict, List
 
-import anthropic
+from langchain_anthropic import ChatAnthropic
 from ragas import evaluate
 from ragas.dataset_schema import EvaluationDataset, SingleTurnSample
-from ragas.llms import llm_factory
-from ragas.metrics.collections.answer_relevancy import AnswerRelevancy
-from ragas.metrics.collections.context_precision import ContextPrecision
-from ragas.metrics.collections.context_recall import ContextRecall
-from ragas.metrics.collections.factual_correctness import FactualCorrectness
-from ragas.metrics.collections.faithfulness import Faithfulness
+from ragas.llms.base import LangchainLLMWrapper
 
 from src.config import settings
 from src.evaluators.claude_evaluator import EvalResult
+
+# Suppress deprecation warnings for legacy metrics (still functional in v0.4)
+warnings.filterwarnings("ignore", message=".*Importing.*from 'ragas.metrics' is deprecated.*")
+from ragas.metrics import (  # noqa: E402
+    context_precision,
+    context_recall,
+    faithfulness,
+)
 
 
 @dataclass
@@ -30,14 +35,17 @@ class RagasScorer:
     """Scores eval results using RAGAS metrics backed by Claude."""
 
     def __init__(self, model: str = settings.default_model):
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        self.llm = llm_factory(model=model, client=client)
+        self.llm = LangchainLLMWrapper(
+            ChatAnthropic(
+                model=model,
+                anthropic_api_key=settings.anthropic_api_key,
+                max_tokens=4096,
+            )
+        )
         self.metrics = [
-            Faithfulness(llm=self.llm),
-            AnswerRelevancy(llm=self.llm),
-            ContextPrecision(llm=self.llm),
-            ContextRecall(llm=self.llm),
-            FactualCorrectness(llm=self.llm),
+            faithfulness,
+            context_precision,
+            context_recall,
         ]
 
     def _build_dataset(self, eval_results: List[EvalResult]) -> EvaluationDataset:
@@ -70,7 +78,7 @@ class RagasScorer:
             for col in df.columns:
                 if col not in ("user_input", "response", "reference", "retrieved_contexts"):
                     val = df.iloc[i][col]
-                    if val is not None:
+                    if val is not None and not (isinstance(val, float) and math.isnan(val)):
                         scores[col] = float(val)
 
             score_results.append(

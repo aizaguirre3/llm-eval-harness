@@ -8,7 +8,7 @@ A cloud-native evaluation harness for LLM responses, built with the Anthropic Cl
 ┌──────────────┐     ┌──────────────────┐     ┌───────────────┐
 │  Dataset     │────>│  Claude          │────>│  RAGAS         │
 │  Loader      │     │  Evaluator       │     │  Scorer        │
-│  (JSON)      │     │  (Anthropic API) │     │  (5 metrics)   │
+│  (JSON)      │     │  (Anthropic API) │     │  (3 metrics)   │
 └──────────────┘     └──────────────────┘     └───────────────┘
                             │                        │
                      ┌──────┴──────┐          ┌──────┴──────┐
@@ -24,7 +24,7 @@ A cloud-native evaluation harness for LLM responses, built with the Anthropic Cl
 | Component | Purpose |
 |-----------|---------|
 | **Anthropic Claude API** | LLM inference (evaluation target + RAGAS judge) |
-| **RAGAS** | Automated scoring (faithfulness, relevancy, precision, recall, correctness) |
+| **RAGAS** | Automated scoring (faithfulness, context precision, context recall) |
 | **Langfuse** | Tracing and observability for LLM calls |
 | **Pydantic** | Data validation and settings management |
 | **GitHub Actions** | CI pipeline with linting and tests |
@@ -80,10 +80,8 @@ python -m src.runner --list-datasets
 | Metric | What It Measures |
 |--------|-----------------|
 | **Faithfulness** | Is the answer factually consistent with the provided context? |
-| **Answer Relevancy** | Does the answer actually address the question asked? |
 | **Context Precision** | Is the retrieved context relevant to the question? |
 | **Context Recall** | Does the context cover all information needed for the reference answer? |
-| **Factual Correctness** | Is the answer factually correct compared to the reference? |
 
 ## Dataset Format
 
@@ -126,16 +124,13 @@ Results are exported to `results/` as JSON:
       "output_tokens": 120,
       "scores": {
         "faithfulness": 0.95,
-        "answer_relevancy": 0.88,
         "context_precision": 0.91,
-        "context_recall": 0.85,
-        "factual_correctness": 0.92
+        "context_recall": 0.85
       }
     }
   ],
   "summary": {
     "faithfulness": 0.93,
-    "answer_relevancy": 0.87,
     "avg_latency_ms": 920.5,
     "total_input_tokens": 135,
     "total_output_tokens": 360
@@ -165,7 +160,7 @@ llm-eval-harness/
 │   ├── evaluators/
 │   │   └── claude_evaluator.py # Claude API evaluator + Langfuse tracing
 │   ├── scorers/
-│   │   └── ragas_scorer.py     # RAGAS scoring (5 metrics)
+│   │   └── ragas_scorer.py     # RAGAS scoring (3 metrics)
 │   └── utils/
 ├── tests/
 │   ├── test_dataset_loader.py
