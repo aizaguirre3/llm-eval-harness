@@ -1,0 +1,107 @@
+[
+  {
+    "id": "ind_001",
+    "question": "What is the rate limit for enterprise tier API keys and what HTTP response is returned when the limit is exceeded?",
+    "expected_answer": "Enterprise tier API keys have a rate limit of 5000 requests per minute. When exceeded, the API returns HTTP 429 with a Retry-After header indicating the number of seconds to wait.",
+    "context": "Rate limits are enforced at 1000 requests per minute per API key for standard tier, 5000 for enterprise tier. Exceeding the rate limit returns HTTP 429 with a Retry-After header indicating the number of seconds to wait. API keys are scoped to specific environments: sandbox, staging, and production. Sandbox keys have a prefix of sk_sandbox_, staging keys use sk_staging_, and production keys use sk_prod_. Cross-environment requests are rejected with HTTP 403.",
+    "metadata": {"category": "api", "difficulty": "medium", "domain": "platform_engineering"}
+  },
+  {
+    "id": "ind_002",
+    "question": "What was the root cause of the model serving latency spike incident in January 2026 and how long did it take to resolve?",
+    "expected_answer": "A memory leak in the model preprocessing pipeline was triggered by malformed input payloads containing Unicode characters outside the BMP that the tokenizer failed to handle, allocating new buffers on each retry without releasing previous ones. The incident lasted 2 hours and 47 minutes.",
+    "context": "INCIDENT INC-2026-001: Model Serving Latency Spike. Date: January 15, 2026. Severity: P1 (Critical). Duration: 2 hours 47 minutes. Impact: 35% of inference requests exceeded SLA (p99 latency > 2000ms). Root Cause: A memory leak in the model preprocessing pipeline caused progressive degradation of response times. The leak was triggered by a batch of malformed input payloads containing Unicode characters outside the BMP (Basic Multilingual Plane) that the tokenizer failed to handle gracefully, allocating new buffers on each retry without releasing the previous ones.",
+    "metadata": {"category": "incident_response", "difficulty": "hard", "domain": "reliability_engineering"}
+  },
+  {
+    "id": "ind_003",
+    "question": "Describe the canary deployment procedure for model rollouts, including the traffic percentages and timing.",
+    "expected_answer": "Canary deployments follow a progressive traffic rollout: 5% for 30 minutes, then 25% for 1 hour, then 50% for 2 hours, then 100%. Automatic rollback triggers if error rate exceeds 1%, p99 latency exceeds 2x baseline, or quality score drops by more than 0.1.",
+    "context": "All production model deployments use a canary strategy: Deploy the new model version alongside the current version. Route 5% of traffic to the canary for the first 30 minutes. Monitor error rate, latency, and output quality metrics. If canary metrics are within 10% of the baseline, increase traffic to 25% for 1 hour. If still healthy, promote to 50% for 2 hours, then 100%. Automatic rollback triggers: error rate > 1%, p99 latency > 2x baseline, or quality score drop > 0.1.",
+    "metadata": {"category": "deployment", "difficulty": "medium", "domain": "mlops"}
+  },
+  {
+    "id": "ind_004",
+    "question": "What instance type should be used for a 13B parameter model and what is its hourly cost?",
+    "expected_answer": "Large models in the 13-70B parameter range should use ml.p4d.24xlarge instances with 8x A100 GPUs and 320GB VRAM, costing $32.77 per hour.",
+    "context": "Instance Selection Guide: Small models (<3B parameters): ml.g5.xlarge (1x A10G, 24GB VRAM) — $1.41/hour. Medium models (3-13B parameters): ml.g5.2xlarge (1x A10G, 24GB VRAM, 32GB RAM) — $1.69/hour. Large models (13-70B parameters): ml.p4d.24xlarge (8x A100, 320GB VRAM) — $32.77/hour. For batch inference, use spot instances (60-70% discount) with checkpointing enabled.",
+    "metadata": {"category": "infrastructure", "difficulty": "easy", "domain": "mlops"}
+  },
+  {
+    "id": "ind_005",
+    "question": "How is PII handled in ML training pipelines according to the data governance policy?",
+    "expected_answer": "Data must pass through the PII detection service before ingestion. Detected PII must be masked, anonymized, or removed. The PII detection model uses entity recognition for names, emails, phone numbers, SSNs, credit card numbers, addresses, IP addresses, and dates of birth. False negative rate must be below 0.1%, and training data with PII requires a DPIA approved by the DPO.",
+    "context": "When ML pipelines process data that may contain PII: 1. Data must pass through the PII detection service before ingestion. 2. Detected PII must be masked, anonymized, or removed based on the use case. 3. PII detection model runs entity recognition for: names, email addresses, phone numbers, SSNs, credit card numbers, physical addresses, IP addresses, and dates of birth. 4. False negative rate for PII detection must be below 0.1% (validated quarterly). 5. Training data containing PII requires a Data Protection Impact Assessment (DPIA) approved by the DPO. 6. Production logs must never contain raw PII — all logging must use the sanitized logger.",
+    "metadata": {"category": "compliance", "difficulty": "hard", "domain": "data_governance"}
+  },
+  {
+    "id": "ind_006",
+    "question": "What caused the vector database inconsistency incident and what was its impact on RAG pipeline quality?",
+    "expected_answer": "A scheduled re-indexing job ran concurrently with a live ingestion pipeline, causing a race condition in ChromaDB. This resulted in orphaned embeddings and duplicate chunks. The impact was the RAG pipeline returning stale or irrelevant context for 12% of queries, with faithfulness scores dropping from 0.85 to 0.62.",
+    "context": "INCIDENT INC-2026-007: Vector Database Inconsistency. Severity: P2 (High). Duration: 4 hours 12 minutes. Impact: RAG pipeline returning stale or irrelevant context for 12% of queries. Root Cause: A scheduled document re-indexing job ran concurrently with a live ingestion pipeline, causing a race condition in the ChromaDB collection. The re-indexing job deleted and recreated chunks for updated documents, but the live ingestion pipeline was simultaneously writing new chunks. This resulted in orphaned embeddings (embeddings without corresponding documents) and duplicate chunks with different embedding versions. Quality monitoring dashboard showed faithfulness scores dropping from 0.85 to 0.62.",
+    "metadata": {"category": "incident_response", "difficulty": "hard", "domain": "reliability_engineering"}
+  },
+  {
+    "id": "ind_007",
+    "question": "How does the hybrid retrieval system in the platform architecture work, and what performance improvement does it provide?",
+    "expected_answer": "Hybrid retrieval combines dense retrieval (embedding similarity via Pinecone) with sparse retrieval (BM25 via Elasticsearch). Results are fused using Reciprocal Rank Fusion (RRF) with k=60. This approach improves nDCG@10 by 15% compared to dense-only retrieval.",
+    "context": "Hybrid Retrieval: Combines dense retrieval (embedding similarity via Pinecone) with sparse retrieval (BM25 via Elasticsearch). Results are fused using Reciprocal Rank Fusion (RRF) with k=60. The hybrid approach improves nDCG@10 by 15% compared to dense-only retrieval. Re-ranking: Retrieved candidates are re-scored using a cross-encoder model (ms-marco-MiniLM-L-12-v2) hosted on a dedicated GPU node. Re-ranking improves precision@5 by 18% but adds approximately 150ms latency.",
+    "metadata": {"category": "architecture", "difficulty": "hard", "domain": "information_retrieval"}
+  },
+  {
+    "id": "ind_008",
+    "question": "What caching strategies are used to reduce costs in the RAG pipeline and what is the overall cost reduction?",
+    "expected_answer": "Three caching strategies are used: semantic cache (cosine similarity > 0.95, 12% hit rate), exact cache (hash-based, 8% hit rate), and context cache (Redis with 1-hour TTL for frequent chunks). Total cache hit rate reduces API costs by approximately 20% and improves p50 latency by 40%.",
+    "context": "Caching Strategy. To optimize latency and reduce API costs: Semantic cache: Embeddings of recent queries are compared against new queries. If cosine similarity > 0.95, the cached response is returned (cache hit rate: 12%). Exact cache: Hash-based cache for identical queries (cache hit rate: 8%). Context cache: Frequently accessed document chunks are cached in Redis (TTL: 1 hour). Total cache hit rate reduces API costs by approximately 20% and improves p50 latency by 40%.",
+    "metadata": {"category": "architecture", "difficulty": "medium", "domain": "performance_optimization"}
+  },
+  {
+    "id": "ind_009",
+    "question": "What are the critical alert thresholds that trigger PagerDuty notifications for model serving?",
+    "expected_answer": "Critical PagerDuty alerts trigger for: error rate > 5% for 5 minutes, p99 latency > 5000ms for 5 minutes, all replicas unhealthy, or GPU memory > 95% (OOM risk).",
+    "context": "Critical alerts (PagerDuty, immediate response): Error rate > 5% for 5 minutes. p99 latency > 5000ms for 5 minutes. All replicas unhealthy. GPU memory > 95% (OOM risk). Warning alerts (Slack #ml-alerts, business hours response): Error rate > 1% for 15 minutes. p99 latency > 2000ms for 15 minutes. Autoscaler at max replicas for 30 minutes. Model output distribution drift detected (KL divergence > 0.1). Token consumption > 150% of daily budget.",
+    "metadata": {"category": "monitoring", "difficulty": "easy", "domain": "sre"}
+  },
+  {
+    "id": "ind_010",
+    "question": "What was the financial impact of the token explosion incident, what caused it, and what safeguards were implemented afterward?",
+    "expected_answer": "The incident caused $47,000 in unexpected API costs over a weekend. A new query expansion feature generated 5-8 sub-queries per user question, each retrieving 10 chunks, resulting in 45,000-token prompts (vs 8,000 normal) — 15x normal consumption. Safeguards implemented: per-request token budget limits of 15,000 tokens with circuit breaker, cost estimation in deployment checklists, real-time cost monitoring with 1-hour alerts, and load testing with cost projection requirements.",
+    "context": "INCIDENT INC-2026-018: Cost Overrun from Token Explosion. Severity: P2. Impact: $47,000 in unexpected API costs over a single weekend. Root Cause: A new retrieval strategy that expanded queries using chain-of-thought reasoning was deployed on Friday afternoon. The query expansion module generated 5-8 sub-queries per user question, each retrieving 10 context chunks. This resulted in prompts averaging 45,000 tokens (compared to the previous 8,000 token average). Combined with weekend batch processing jobs, the token consumption was 15x normal levels. Action Items: 1. Implement per-request token budget limits (max 15,000 tokens per prompt) with circuit breaker. 2. Add cost estimation to the deployment checklist for any feature affecting token consumption. 3. Set up real-time cost monitoring dashboard with 1-hour granularity alerts. 4. Require load testing with cost projection before deploying retrieval strategy changes.",
+    "metadata": {"category": "incident_response", "difficulty": "hard", "domain": "cost_management"}
+  },
+  {
+    "id": "ind_011",
+    "question": "What data classification tier applies to PII and what are the key compliance requirements for that tier?",
+    "expected_answer": "PII falls under Tier 4 (Restricted). Requirements include compliance with GDPR, HIPAA, PCI-DSS, or CCPA as applicable. Access requires explicit approval from the Data Protection Officer. All access is logged and auditable. Data must be anonymized or pseudonymized before use in ML training. Default retention period is 3 years with automatic deletion.",
+    "context": "Tier 4 - Restricted: Data subject to regulatory requirements or containing personal information. Examples: PII (personally identifiable information), PHI (protected health information), payment card data, biometric data. Must comply with GDPR, HIPAA, PCI-DSS, or CCPA as applicable. Access requires explicit approval from the Data Protection Officer. All access is logged and auditable. Data must be anonymized or pseudonymized before use in ML training. Retention period: as specified by the applicable regulation; default is 3 years with automatic deletion.",
+    "metadata": {"category": "compliance", "difficulty": "medium", "domain": "data_governance"}
+  },
+  {
+    "id": "ind_012",
+    "question": "How does the prompt injection incident response work, and what long-term mitigations were implemented?",
+    "expected_answer": "An attacker submitted crafted queries that overrode system prompt grounding constraints, causing cross-tenant data leakage in 3 responses. The system relied on prompt-level isolation rather than infrastructure-level separation. Long-term mitigations: infrastructure-level tenant isolation with separate ChromaDB collections per tenant, prompt injection detection classifier at API gateway, output scanning for cross-tenant data, red team exercises, and updated security policy requiring defense-in-depth for multi-tenant LLM systems.",
+    "context": "INCIDENT INC-2026-012: Prompt Injection Attack. Severity: P1 (Critical). Duration: 45 minutes. Impact: 3 customer-facing responses contained data from other tenants' documents. Root Cause: An attacker submitted a carefully crafted query containing prompt injection instructions that overrode the system prompt's grounding constraints. The multi-tenant RAG system relied on prompt-level isolation rather than infrastructure-level tenant separation. Action Items: 1. Implement infrastructure-level tenant isolation: separate ChromaDB collections per tenant. 2. Deploy prompt injection detection at the API gateway using a classifier model. 3. Add output scanning to detect cross-tenant data leakage before returning responses. 4. Conduct red team exercise on all customer-facing LLM endpoints. 5. Update security policy to require defense-in-depth for multi-tenant LLM systems.",
+    "metadata": {"category": "security", "difficulty": "hard", "domain": "llm_security"}
+  },
+  {
+    "id": "ind_013",
+    "question": "What are the autoscaling policies for model endpoints, including scale-up and scale-down triggers?",
+    "expected_answer": "Scale-up triggers when GPU utilization exceeds 70% for 3 consecutive minutes. Scale-down triggers when GPU utilization drops below 30% for 10 consecutive minutes. Minimum replicas: 2 for high availability. Maximum replicas: 20 as a cost cap. Scale-up cooldown is 5 minutes, scale-down cooldown is 15 minutes.",
+    "context": "Autoscaling policies for model endpoints: Scale-up trigger: GPU utilization > 70% for 3 consecutive minutes. Scale-down trigger: GPU utilization < 30% for 10 consecutive minutes. Minimum replicas: 2 (for high availability). Maximum replicas: 20 (cost cap). Scale-up cooldown: 5 minutes (prevent thrashing). Scale-down cooldown: 15 minutes (allow for traffic spikes).",
+    "metadata": {"category": "infrastructure", "difficulty": "medium", "domain": "mlops"}
+  },
+  {
+    "id": "ind_014",
+    "question": "What is the disaster recovery configuration for the ML platform, including RPO, RTO, and backup strategy?",
+    "expected_answer": "RPO is 1 hour for vector database and 15 minutes for configuration. RTO is 30 minutes for full service restoration. Cross-region failover is automated via Route 53 health checks. Vector database backups are hourly snapshots to S3, retained for 30 days. Model artifacts are stored in S3 with versioning, replicated across all regions.",
+    "context": "Disaster Recovery. RPO (Recovery Point Objective): 1 hour for vector database, 15 minutes for configuration. RTO (Recovery Time Objective): 30 minutes for full service restoration. Cross-region failover is automated via Route 53 health checks. Vector database backups: hourly snapshots to S3, retained for 30 days. Model artifacts: stored in S3 with versioning enabled, replicated across all regions.",
+    "metadata": {"category": "infrastructure", "difficulty": "medium", "domain": "sre"}
+  },
+  {
+    "id": "ind_015",
+    "question": "What validation steps must a model pass before being deployed to production?",
+    "expected_answer": "Models must pass: accuracy benchmark (meet or exceed baseline on holdout test set), latency benchmark (p99 under 500ms for real-time endpoints), memory profiling (peak GPU memory under 80% of available), input/output schema validation, and bias audit (fairness evaluation with demographic parity violations under 5%).",
+    "context": "Model Validation. Before deploying any model to production, run the validation suite: Accuracy benchmark: model must meet or exceed the baseline accuracy on the holdout test set. Latency benchmark: p99 inference latency must be under 500ms for real-time endpoints. Memory profiling: peak memory usage must not exceed 80% of the target instance's available GPU memory. Input/output schema validation: verify the model accepts the expected input format and produces conformant outputs. Bias audit: run the fairness evaluation suite and document any demographic parity violations exceeding 5%.",
+    "metadata": {"category": "deployment", "difficulty": "medium", "domain": "mlops"}
+  }
+]
