@@ -31,33 +31,31 @@ A cloud-native evaluation harness for LLM responses, built with the Anthropic Cl
 
 **Pipeline:** Load Q&A dataset -> Evaluate with Claude (sync or async) -> Score with RAGAS -> Export JSON report
 
-## Results: Model Comparison
+## Results: Industry MLOps Evaluation
 
-Evaluated 10 AI engineering questions (RAG, embeddings, evaluation, fine-tuning, observability, guardrails, latency optimization, agents) with rich context documents simulating real RAG retrieval.
+Evaluated 15 enterprise MLOps questions covering incident response, canary deployments, PII handling, autoscaling, disaster recovery, and more. Full results: **[RESULTS.md](RESULTS.md)**
 
-### Scores
+### RAGAS Scores
 
-| Metric | Sonnet 4 | Haiku 4.5 |
-|--------|----------|-----------|
-| **Faithfulness** | 0.816 | 0.815 |
-| **Context Precision** | 1.000 | 1.000 |
-| **Context Recall** | 0.961 | 0.940 |
+| Metric | Sonnet 4 | Haiku 4.5 | Winner |
+|--------|----------|-----------|--------|
+| **Faithfulness** | 0.671 | **0.817** | Haiku |
+| **Context Precision** | **1.000** | **1.000** | Tie |
+| **Context Recall** | **1.000** | **1.000** | Tie |
 
 ### Performance
 
-| Metric | Sonnet 4 | Haiku 4.5 |
-|--------|----------|-----------|
-| **Avg Latency** | 6,671 ms | 3,122 ms |
-| **Total Input Tokens** | 3,096 | 3,096 |
-| **Total Output Tokens** | 3,293 | 3,097 |
+| Metric | Sonnet 4 | Haiku 4.5 | Delta |
+|--------|----------|-----------|-------|
+| **Avg Latency** | 5,015 ms | **2,412 ms** | 2.1x faster |
+| **Total Output Tokens** | 3,361 | 3,202 | 5% fewer |
 
-### Analysis
+### Key Findings
 
-- **Both models achieve comparable quality scores**, with Sonnet slightly ahead on context recall (0.961 vs 0.940)
-- **Haiku is 2.1x faster** at roughly half the latency per request
-- **Context precision is perfect (1.0)** for both models, meaning all retrieved context was relevant
-- **Faithfulness ~0.82** indicates both models occasionally add accurate information beyond the provided context -- expected behavior for knowledge-intensive questions
-- **Cost-quality trade-off favors Haiku** for this task, where speed matters more than marginal quality gains
+- **Haiku outperforms Sonnet on faithfulness** (0.82 vs 0.67) for enterprise documentation Q&A
+- **Haiku is 2.1x faster** with comparable quality -- clear winner for production use
+- **Perfect context precision/recall** (1.0) across both models
+- **Cost-quality trade-off strongly favors the smaller model** for this class of tasks
 
 ## Stack
 
@@ -69,6 +67,16 @@ Evaluated 10 AI engineering questions (RAG, embeddings, evaluation, fine-tuning,
 | **Pydantic** | Data validation and settings management |
 | **asyncio** | Concurrent API calls with semaphore-based rate limiting |
 | **GitHub Actions** | CI pipeline with linting and tests |
+
+## Features
+
+- **RAGAS Scoring**: Automated evaluation using faithfulness, context precision, and context recall metrics
+- **Model Comparison**: Run identical evaluations across models to make data-driven selection decisions
+- **Regression Testing**: `--baseline` flag compares results against a previous run, flags score drops exceeding a threshold
+- **Custom Metrics**: Extensible plugin system for user-defined scoring functions (exact match, keyword coverage, length ratio, or your own)
+- **Streamlit Dashboard**: Interactive visualization with score heatmaps, latency charts, and model comparison
+- **Concurrent Evaluation**: Async API calls with semaphore-based rate limiting for 2x+ throughput
+- **Langfuse Tracing**: Full observability for every LLM call (optional)
 
 ## Quick Start
 
@@ -118,6 +126,16 @@ python -m src.runner -o results/my_run.json
 
 # List available datasets
 python -m src.runner --list-datasets
+
+# Regression testing against a baseline
+python -m src.runner -d industry_mlops.json --baseline results/baseline.json
+
+# Custom metrics (built-in or your own)
+python -m src.runner -d industry_mlops.json --skip-scoring --custom-metrics builtin
+python -m src.runner -d industry_mlops.json --skip-scoring --custom-metrics examples/my_metrics.py
+
+# Streamlit dashboard
+streamlit run dashboard.py
 ```
 
 ## RAGAS Metrics
@@ -190,7 +208,7 @@ Results are exported to `results/` as JSON:
 ```bash
 pytest -v
 
-# 14 tests covering:
+# 23 tests covering:
 # - Dataset loading, filtering, and validation
 # - Claude API evaluation (sync + mocked)
 # - RAGAS scoring with NaN handling
@@ -204,6 +222,7 @@ pytest -v
 llm-eval-harness/
 ├── .github/workflows/ci.yml    # GitHub Actions CI (Python 3.11/3.12)
 ├── data/
+│   ├── industry_mlops.json      # 15 enterprise MLOps Q&A pairs
 │   ├── ai_engineering.json      # 10 AI engineering Q&A pairs
 │   └── sample_qa.json           # 3 sample Q&A pairs
 ├── results/                     # JSON eval outputs (gitignored)
@@ -214,14 +233,22 @@ llm-eval-harness/
 │   │   └── dataset.py           # Dataset loader + QAPair Pydantic model
 │   ├── evaluators/
 │   │   └── claude_evaluator.py  # Sync + async Claude evaluator + Langfuse tracing
+│   ├── regression.py            # Baseline comparison + regression detection
 │   ├── scorers/
-│   │   └── ragas_scorer.py      # RAGAS scoring (3 metrics)
+│   │   ├── ragas_scorer.py      # RAGAS scoring (3 metrics)
+│   │   └── custom_metrics.py    # Extensible custom metric plugins
 │   └── utils/
-├── tests/
-│   ├── test_dataset_loader.py   # 4 tests
-│   ├── test_claude_evaluator.py # 2 tests
-│   ├── test_ragas_scorer.py     # 3 tests
-│   └── test_runner.py           # 4 tests
+├── examples/
+│   └── my_metrics.py            # Example custom metrics file
+├── dashboard.py                 # Streamlit visualization dashboard
+├── RESULTS.md                   # Full evaluation report with analysis
+├── tests/                       # 23 tests
+│   ├── test_dataset_loader.py
+│   ├── test_claude_evaluator.py
+│   ├── test_ragas_scorer.py
+│   ├── test_runner.py
+│   ├── test_regression.py
+│   └── test_custom_metrics.py
 ├── .env.example
 ├── .gitignore
 └── pyproject.toml
