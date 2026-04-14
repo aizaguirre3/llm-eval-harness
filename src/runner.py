@@ -10,6 +10,7 @@ from typing import List
 from src.config import PROJECT_ROOT
 from src.evaluators.claude_evaluator import ClaudeEvaluator, EvalResult
 from src.loaders.dataset import DatasetLoader
+from src.regression import compare_results, print_regression_report
 from src.scorers.ragas_scorer import RagasScorer, ScoreResult
 
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -22,6 +23,9 @@ def run_eval(
     skip_scoring: bool = False,
     output_json: str = "",
     concurrent: bool = False,
+    baseline: str = "",
+    regression_threshold: float = 0.05,
+    custom_metrics: str = "",
 ) -> dict:
     """Run the full eval pipeline: load -> evaluate -> score -> export."""
 
@@ -62,14 +66,36 @@ def run_eval(
         score_results = scorer.score(eval_results)
         _print_score_results(score_results)
 
-    # 4. Export JSON results
+    # 4. Run custom metrics
+    if custom_metrics:
+        from src.scorers.custom_metrics import load_custom_metrics, run_custom_metrics
+
+        metrics = load_custom_metrics(custom_metrics)
+        custom_scores = run_custom_metrics(metrics, eval_results)
+        # Merge custom scores into score_results
+        custom_by_id = {s.qa_id: s.scores for s in custom_scores}
+        for sr in score_results:
+            sr.scores.update(custom_by_id.get(sr.qa_id, {}))
+        # If no RAGAS scores, use custom scores as the score_results
+        if not score_results:
+            score_results = custom_scores
+        _print_score_results(score_results)
+
+    # 5. Export JSON results
     output_path = _export_results(eval_results, score_results, evaluator.model, output_json)
     if output_path:
         print(f"\nResults exported to: {output_path}")
 
+    # 6. Regression test against baseline
+    regression_report = None
+    if baseline and output_path:
+        regression_report = compare_results(output_path, baseline, regression_threshold)
+        print_regression_report(regression_report)
+
     return {
         "eval_results": eval_results,
         "score_results": score_results,
+        "regression_report": regression_report,
     }
 
 
@@ -206,6 +232,22 @@ def main() -> None:
         action="store_true",
         help="List available datasets and exit",
     )
+    parser.add_argument(
+        "--baseline",
+        default="",
+        help="Path to baseline JSON for regression testing",
+    )
+    parser.add_argument(
+        "--regression-threshold",
+        type=float,
+        default=0.05,
+        help="Score drop threshold to flag as regression (default: 0.05)",
+    )
+    parser.add_argument(
+        "--custom-metrics",
+        default="",
+        help="Path to Python file with custom metric functions",
+    )
 
     args = parser.parse_args()
 
@@ -224,6 +266,9 @@ def main() -> None:
         skip_scoring=args.skip_scoring,
         output_json=args.output,
         concurrent=args.concurrent,
+        baseline=args.baseline,
+        regression_threshold=args.regression_threshold,
+        custom_metrics=args.custom_metrics,
     )
 
 
