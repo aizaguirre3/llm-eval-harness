@@ -129,3 +129,10 @@ REGRESSION TEST: PASSED (threshold: 0.05)
 - **Regression testing**: Threshold-based comparison with per-question drill-down
 - **Dataset**: 15 enterprise MLOps Q&A pairs with expert-written context and ground truth answers
 - **Date**: April 14, 2026
+- **Provenance caveat**: the per-run JSON files these tables were read from were
+  not committed (`results/` is gitignored), so the figures above are the report
+  as generated on that date and cannot be re-derived from the repository
+  without re-running the evaluation.
+- **Metric change since this run**: `keyword_coverage` used substring matching
+  when the 0.721 figure above was produced; it now matches whole words only, so
+  a re-run would score this metric somewhat lower.

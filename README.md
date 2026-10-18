@@ -86,8 +86,12 @@ Evaluated 15 enterprise MLOps questions covering incident response, canary deplo
 git clone https://github.com/aizaguirre3/llm-eval-harness.git
 cd llm-eval-harness
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"            # evaluation + tests
+pip install -e ".[dev,dashboard]"  # ...plus the Streamlit dashboard
 ```
+
+Requires Python 3.11+. Dependencies are pinned exactly — see the maintenance
+notes below for why.
 
 ### 2. Configure
 
@@ -134,7 +138,7 @@ python -m src.runner -d industry_mlops.json --baseline results/baseline.json
 python -m src.runner -d industry_mlops.json --skip-scoring --custom-metrics builtin
 python -m src.runner -d industry_mlops.json --skip-scoring --custom-metrics examples/my_metrics.py
 
-# Streamlit dashboard
+# Streamlit dashboard (needs the `dashboard` extra)
 streamlit run dashboard.py
 ```
 
@@ -208,13 +212,17 @@ Results are exported to `results/` as JSON:
 ```bash
 pytest -v
 
-# 23 tests covering:
+# 43 tests covering:
 # - Dataset loading, filtering, and validation
-# - Claude API evaluation (sync + mocked)
+# - Claude API evaluation: sync, concurrent (order-preserving), non-text blocks
+# - Langfuse tracing against the v3+ observation API
 # - RAGAS scoring with NaN handling
-# - Full pipeline orchestration
-# - JSON export with summary statistics
+# - Custom metrics: word-boundary matching, plugin loading, failing-plugin isolation
+# - Regression detection: summary, per-question, latency, perf counters excluded
+# - Full pipeline orchestration and JSON export
 ```
+
+All API calls are mocked; the suite needs no network and no keys.
 
 ## Project Structure
 
@@ -242,7 +250,7 @@ llm-eval-harness/
 │   └── my_metrics.py            # Example custom metrics file
 ├── dashboard.py                 # Streamlit visualization dashboard
 ├── RESULTS.md                   # Full evaluation report with analysis
-├── tests/                       # 23 tests
+├── tests/                       # 43 tests
 │   ├── test_dataset_loader.py
 │   ├── test_claude_evaluator.py
 │   ├── test_ragas_scorer.py
@@ -253,6 +261,33 @@ llm-eval-harness/
 ├── .gitignore
 └── pyproject.toml
 ```
+
+## Maintenance notes
+
+**2026-10-18.** The repository had been failing CI since April. Causes and
+fixes, recorded here because they are the kind of thing a reader of an
+evaluation harness should be able to check:
+
+- **Fresh installs no longer imported.** Dependencies were `>=` ranges, and
+  `ragas` 0.4.3 still imports `langchain_community.chat_models.vertexai`, which
+  `langchain-community` 0.4 removed. Three of six test modules could not be
+  collected. Every dependency is now pinned to a combination verified to import.
+- **Langfuse tracing was broken at runtime.** The code used the v2
+  `trace().generation()` API; Langfuse 3.0 removed it. No test set Langfuse
+  keys, so the `AttributeError` never surfaced. Migrated to
+  `start_observation(as_type="generation")` and added a test that exercises it.
+- **Lint failed at push time.** Unused imports tripped `ruff`'s default rules
+  on 11 of 12 commits. The rule set is now explicit in `pyproject.toml`.
+- **Two built-in metrics used substring matching.** `exact_match` scored `yes`
+  as present in `yesterday`; `keyword_coverage` counted `is` because of `this`.
+  Both now match on whole words. The `keyword_coverage` figure in
+  [RESULTS.md](RESULTS.md) predates this change.
+- `.env` no longer overrides variables already in the environment.
+- Tests previously wrote run output into `results/`; they now use temp paths.
+
+The RAGAS deprecation warning for `LangchainLLMWrapper` is left visible on
+purpose: ragas is steering toward its own `llm_factory`, which does not yet
+cover Claude, and silencing the warning would hide the migration debt.
 
 ## License
 

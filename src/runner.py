@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 from src.config import PROJECT_ROOT
 from src.evaluators.claude_evaluator import ClaudeEvaluator, EvalResult
@@ -100,18 +98,18 @@ def run_eval(
 
 
 def _export_results(
-    eval_results: List[EvalResult],
-    score_results: List[ScoreResult],
+    eval_results: list[EvalResult],
+    score_results: list[ScoreResult],
     model: str,
     output_json: str,
 ) -> str:
-    RESULTS_DIR.mkdir(exist_ok=True)
-
     if output_json:
         output_path = Path(output_json)
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = RESULTS_DIR / f"eval_{timestamp}.json"
+    # A caller-supplied path may sit in a directory that does not exist yet.
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     scores_by_id = {s.qa_id: s.scores for s in score_results}
 
@@ -160,7 +158,7 @@ def _export_results(
     return str(output_path)
 
 
-def _print_eval_results(results: List[EvalResult]) -> None:
+def _print_eval_results(results: list[EvalResult]) -> None:
     print(f"\n{'='*70}")
     print("EVALUATION RESULTS")
     print(f"{'='*70}")
@@ -171,7 +169,7 @@ def _print_eval_results(results: List[EvalResult]) -> None:
         print(f"  Latency:  {r.latency_ms:.0f}ms | Tokens: {r.input_tokens}in/{r.output_tokens}out")
 
 
-def _print_score_results(results: List[ScoreResult]) -> None:
+def _print_score_results(results: list[ScoreResult]) -> None:
     print(f"\n{'='*70}")
     print("RAGAS SCORES")
     print(f"{'='*70}")

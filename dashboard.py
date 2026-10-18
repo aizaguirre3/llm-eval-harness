@@ -58,15 +58,18 @@ def main() -> None:
         if k not in ("avg_latency_ms", "total_input_tokens", "total_output_tokens")
     }
 
+    # Load the baseline once, not once per metric.
+    baseline_summary = {}
+    if compare_file != "None":
+        baseline_summary = load_result_file(RESULTS_DIR / compare_file).get("summary", {})
+
     if score_metrics:
         cols = st.columns(len(score_metrics))
         for i, (metric_name, value) in enumerate(sorted(score_metrics.items())):
             delta = None
-            if compare_file != "None":
-                baseline_data = load_result_file(RESULTS_DIR / compare_file)
-                baseline_val = baseline_data.get("summary", {}).get(metric_name)
-                if baseline_val is not None:
-                    delta = round(value - baseline_val, 4)
+            baseline_val = baseline_summary.get(metric_name)
+            if baseline_val is not None:
+                delta = round(value - baseline_val, 4)
             cols[i].metric(metric_name, f"{value:.4f}", delta=delta)
 
     # Latency and token stats

@@ -1,10 +1,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from src.loaders.dataset import QAPair
 from src.evaluators.claude_evaluator import EvalResult
+from src.loaders.dataset import QAPair
 from src.scorers.ragas_scorer import ScoreResult
 
 
@@ -27,7 +25,7 @@ def _make_eval_result(qa=None):
 @patch("src.runner.RagasScorer")
 @patch("src.runner.ClaudeEvaluator")
 @patch("src.runner.DatasetLoader")
-def test_run_eval_full_pipeline(mock_loader_cls, mock_evaluator_cls, mock_scorer_cls):
+def test_run_eval_full_pipeline(mock_loader_cls, mock_evaluator_cls, mock_scorer_cls, tmp_path):
     qa_pairs = [_make_qa()]
     mock_loader = MagicMock()
     mock_loader.load.return_value = qa_pairs
@@ -45,7 +43,9 @@ def test_run_eval_full_pipeline(mock_loader_cls, mock_evaluator_cls, mock_scorer
 
     from src.runner import run_eval
 
-    result = run_eval(dataset_file="test.json")
+    # Route the export into tmp_path; without this the test writes into the
+    # repository's results/ directory as a side effect.
+    result = run_eval(dataset_file="test.json", output_json=str(tmp_path / "out.json"))
 
     mock_loader.load.assert_called_once_with("test.json")
     mock_evaluator.evaluate_batch.assert_called_once_with(qa_pairs)
@@ -55,7 +55,7 @@ def test_run_eval_full_pipeline(mock_loader_cls, mock_evaluator_cls, mock_scorer
 
 @patch("src.runner.ClaudeEvaluator")
 @patch("src.runner.DatasetLoader")
-def test_run_eval_skip_scoring(mock_loader_cls, mock_evaluator_cls):
+def test_run_eval_skip_scoring(mock_loader_cls, mock_evaluator_cls, tmp_path):
     qa_pairs = [_make_qa()]
     mock_loader = MagicMock()
     mock_loader.load.return_value = qa_pairs
@@ -68,10 +68,20 @@ def test_run_eval_skip_scoring(mock_loader_cls, mock_evaluator_cls):
 
     from src.runner import run_eval
 
-    result = run_eval(skip_scoring=True)
+    result = run_eval(skip_scoring=True, output_json=str(tmp_path / "out.json"))
 
     assert len(result["eval_results"]) == 1
     assert result["score_results"] == []
+
+
+def test_export_creates_missing_parent_directories(tmp_path):
+    """A caller-supplied output path in a directory that does not exist yet."""
+    from src.runner import _export_results
+
+    nested = tmp_path / "a" / "b" / "run.json"
+    _export_results([_make_eval_result()], [], "m", str(nested))
+    assert nested.exists()
+    assert json.loads(nested.read_text())["metadata"]["total_questions"] == 1
 
 
 @patch("src.runner.DatasetLoader")

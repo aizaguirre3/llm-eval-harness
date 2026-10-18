@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import List, Optional
 
 import anthropic
 from langfuse import Langfuse
@@ -20,6 +19,22 @@ class EvalResult:
     latency_ms: float
     input_tokens: int
     output_tokens: int
+
+
+def _response_text(response) -> str:
+    """Concatenate the text blocks of a Messages API response.
+
+    A response is a list of content blocks and is not guaranteed to be a single
+    text block -- tool-use blocks carry no ``text`` at all. Indexing ``[0].text``
+    raises on those; this collects whatever text is present and returns an empty
+    string if there is none.
+    """
+    parts = []
+    for block in getattr(response, "content", None) or []:
+        text = getattr(block, "text", None)
+        if isinstance(text, str):
+            parts.append(text)
+    return "".join(parts)
 
 
 class ClaudeEvaluator:
@@ -50,18 +65,22 @@ class ClaudeEvaluator:
         else:
             self.langfuse = None
 
-    def _trace_generation(
-        self, trace_name: str, qa: QAPair, result: EvalResult
-    ) -> None:
+    def _trace_generation(self, trace_name: str, qa: QAPair, result: EvalResult) -> None:
+        """Record one completion in Langfuse.
+
+        Uses the v3+ observation API. The earlier ``trace().generation()`` calls
+        were removed in Langfuse 3.0, so with the SDK unpinned this method raised
+        ``AttributeError`` on every traced call -- a path no test exercised.
+        """
         if not self.langfuse:
             return
-        trace = self.langfuse.trace(name=trace_name, input={"question": qa.question})
-        trace.generation(
-            name="claude_completion",
+        generation = self.langfuse.start_observation(
+            name=trace_name,
+            as_type="generation",
             model=self.model,
-            input=[{"role": "user", "content": qa.question}],
+            input=[{"role": "user", "content": self._build_user_content(qa)}],
             output=result.actual_answer,
-            usage={
+            usage_details={
                 "input": result.input_tokens,
                 "output": result.output_tokens,
             },
@@ -70,11 +89,22 @@ class ClaudeEvaluator:
                 "latency_ms": result.latency_ms,
             },
         )
+        generation.end()
 
     def _build_user_content(self, qa: QAPair) -> str:
         if qa.context:
             return f"Context: {qa.context}\n\nQuestion: {qa.question}"
         return qa.question
+
+    def _build_result(self, qa: QAPair, response, latency_ms: float) -> EvalResult:
+        return EvalResult(
+            qa_pair=qa,
+            actual_answer=_response_text(response),
+            model=self.model,
+            latency_ms=latency_ms,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+        )
 
     def evaluate_single(self, qa: QAPair) -> EvalResult:
         user_content = self._build_user_content(qa)
@@ -88,25 +118,13 @@ class ClaudeEvaluator:
         )
         latency_ms = (time.perf_counter() - start) * 1000
 
-        result = EvalResult(
-            qa_pair=qa,
-            actual_answer=response.content[0].text,
-            model=self.model,
-            latency_ms=latency_ms,
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
-        )
-
+        result = self._build_result(qa, response, latency_ms)
         self._trace_generation("eval_single", qa, result)
         return result
 
-    def evaluate_batch(self, qa_pairs: List[QAPair]) -> List[EvalResult]:
+    def evaluate_batch(self, qa_pairs: list[QAPair]) -> list[EvalResult]:
         """Evaluate a batch of Q&A pairs sequentially."""
-        results = []
-        for qa in qa_pairs:
-            result = self.evaluate_single(qa)
-            results.append(result)
-        return results
+        return [self.evaluate_single(qa) for qa in qa_pairs]
 
     async def _evaluate_single_async(
         self, qa: QAPair, semaphore: asyncio.Semaphore
@@ -123,25 +141,17 @@ class ClaudeEvaluator:
             )
             latency_ms = (time.perf_counter() - start) * 1000
 
-            result = EvalResult(
-                qa_pair=qa,
-                actual_answer=response.content[0].text,
-                model=self.model,
-                latency_ms=latency_ms,
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-            )
-
+            result = self._build_result(qa, response, latency_ms)
             self._trace_generation("eval_async", qa, result)
             return result
 
-    async def evaluate_batch_async(self, qa_pairs: List[QAPair]) -> List[EvalResult]:
+    async def evaluate_batch_async(self, qa_pairs: list[QAPair]) -> list[EvalResult]:
         """Evaluate a batch of Q&A pairs concurrently with rate limiting."""
         semaphore = asyncio.Semaphore(self.max_concurrent)
         tasks = [self._evaluate_single_async(qa, semaphore) for qa in qa_pairs]
         return await asyncio.gather(*tasks)
 
-    def evaluate_batch_concurrent(self, qa_pairs: List[QAPair]) -> List[EvalResult]:
+    def evaluate_batch_concurrent(self, qa_pairs: list[QAPair]) -> list[EvalResult]:
         """Evaluate a batch concurrently (sync wrapper for async batch)."""
         return asyncio.run(self.evaluate_batch_async(qa_pairs))
 

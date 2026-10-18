@@ -2,34 +2,36 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple
+
+#: Summary keys that are performance counters, not quality scores. They are
+#: reported separately and never flagged as regressions.
+PERF_KEYS = ("avg_latency_ms", "total_input_tokens", "total_output_tokens")
 
 
 def compare_results(
     current_path: str,
     baseline_path: str,
     threshold: float = 0.05,
-) -> Dict:
+) -> dict:
     """Compare current eval results against a baseline and flag regressions.
 
-    A regression is flagged when a metric drops by more than `threshold`
-    (default 5%) compared to the baseline.
+    ``threshold`` is an absolute drop on the metric's own scale. Scores here are
+    all on [0, 1], so the default 0.05 means "five points", not five percent of
+    the baseline value.
     """
     current = json.loads(Path(current_path).read_text())
     baseline = json.loads(Path(baseline_path).read_text())
 
-    regressions: List[Dict] = []
-    improvements: List[Dict] = []
-    unchanged: List[str] = []
+    regressions: list[dict] = []
+    improvements: list[dict] = []
+    unchanged: list[str] = []
 
     baseline_summary = baseline.get("summary", {})
     current_summary = current.get("summary", {})
 
     # Compare summary-level metrics
     all_metrics = set(baseline_summary.keys()) | set(current_summary.keys())
-    score_metrics = [m for m in all_metrics if m not in (
-        "avg_latency_ms", "total_input_tokens", "total_output_tokens",
-    )]
+    score_metrics = [m for m in all_metrics if m not in PERF_KEYS]
 
     for metric in sorted(score_metrics):
         base_val = baseline_summary.get(metric)
@@ -58,7 +60,7 @@ def compare_results(
             unchanged.append(metric)
 
     # Per-question comparison
-    per_question: List[Dict] = []
+    per_question: list[dict] = []
     baseline_by_id = {r["id"]: r for r in baseline.get("results", [])}
 
     for result in current.get("results", []):
@@ -100,7 +102,7 @@ def compare_results(
             ),
         }
 
-    report = {
+    return {
         "passed": len(regressions) == 0,
         "threshold": threshold,
         "baseline_file": baseline_path,
@@ -112,10 +114,8 @@ def compare_results(
         "latency": latency_delta,
     }
 
-    return report
 
-
-def print_regression_report(report: Dict) -> None:
+def print_regression_report(report: dict) -> None:
     """Print a formatted regression report to stdout."""
     status = "PASSED" if report["passed"] else "FAILED"
     print(f"\n{'='*70}")

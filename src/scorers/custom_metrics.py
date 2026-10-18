@@ -1,12 +1,27 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List
+from pathlib import Path
 
 from src.evaluators.claude_evaluator import EvalResult
 from src.scorers.ragas_scorer import ScoreResult
+
+_WORD = re.compile(r"[a-z0-9']+")
+
+
+def _tokens(text: str) -> set[str]:
+    """Lower-cased word tokens, punctuation stripped.
+
+    Both built-in text metrics compare on tokens rather than substrings. With
+    plain substring tests, an expected keyword ``is`` matched inside ``this``
+    and an expected answer ``yes`` matched ``yesterday`` -- both silently
+    inflated scores.
+    """
+    return set(_WORD.findall(text.lower()))
 
 
 @dataclass
@@ -26,8 +41,16 @@ class CustomMetric:
 
 
 def exact_match(question: str, expected_answer: str, actual_answer: str, context: str) -> float:
-    """Returns 1.0 if the expected answer appears verbatim in the actual answer."""
-    return 1.0 if expected_answer.lower() in actual_answer.lower() else 0.0
+    """1.0 if the expected answer appears in the actual answer as a whole-word phrase.
+
+    Matching is case-insensitive and respects word boundaries, so an expected
+    ``"4"`` does not match ``"42"`` and ``"yes"`` does not match ``"yesterday"``.
+    """
+    expected = expected_answer.strip()
+    if not expected:
+        return 1.0
+    pattern = r"(?<![a-z0-9])" + re.escape(expected.lower()) + r"(?![a-z0-9])"
+    return 1.0 if re.search(pattern, actual_answer.lower()) else 0.0
 
 
 def length_ratio(question: str, expected_answer: str, actual_answer: str, context: str) -> float:
@@ -38,7 +61,7 @@ def length_ratio(question: str, expected_answer: str, actual_answer: str, contex
     if not expected_answer:
         return 1.0
     ratio = len(actual_answer) / len(expected_answer)
-    # Penalize both too short and too long — ideal is around 1.0
+    # Penalize both too short and too long -- ideal is around 1.0
     if ratio > 1.0:
         return min(1.0, 1.0 / ratio)
     return ratio
@@ -47,43 +70,62 @@ def length_ratio(question: str, expected_answer: str, actual_answer: str, contex
 def keyword_coverage(
     question: str, expected_answer: str, actual_answer: str, context: str
 ) -> float:
-    """Fraction of words from the expected answer that appear in the actual answer."""
-    expected_words = set(expected_answer.lower().split())
+    """Fraction of distinct words in the expected answer that appear in the actual answer."""
+    expected_words = _tokens(expected_answer)
     if not expected_words:
         return 1.0
-    actual_lower = actual_answer.lower()
-    matched = sum(1 for w in expected_words if w in actual_lower)
-    return matched / len(expected_words)
+    actual_words = _tokens(actual_answer)
+    return len(expected_words & actual_words) / len(expected_words)
 
 
 BUILTIN_METRICS = {
-    "exact_match": CustomMetric(name="exact_match", fn=exact_match, description="Checks if expected answer appears in actual answer"),
-    "length_ratio": CustomMetric(name="length_ratio", fn=length_ratio, description="Ratio of actual to expected answer length"),
-    "keyword_coverage": CustomMetric(name="keyword_coverage", fn=keyword_coverage, description="Fraction of expected words found in actual answer"),
+    "exact_match": CustomMetric(
+        name="exact_match",
+        fn=exact_match,
+        description="Checks if the expected answer appears in the actual answer as a whole phrase",
+    ),
+    "length_ratio": CustomMetric(
+        name="length_ratio",
+        fn=length_ratio,
+        description="Ratio of actual to expected answer length",
+    ),
+    "keyword_coverage": CustomMetric(
+        name="keyword_coverage",
+        fn=keyword_coverage,
+        description="Fraction of expected-answer words found in the actual answer",
+    ),
 }
 
 
 # ── Loading and running ──────────────────────────────────────────────────
 
 
-def load_custom_metrics(path: str) -> List[CustomMetric]:
+def load_custom_metrics(path: str) -> list[CustomMetric]:
     """Load custom metrics from a Python file.
 
     The file should define a `METRICS` list of CustomMetric instances,
     or define functions decorated with @metric.
     If path is "builtin", returns all built-in custom metrics.
+
+    This executes the file as Python. It is a plugin mechanism and is only safe
+    for files you wrote or reviewed.
     """
     if path == "builtin":
         return list(BUILTIN_METRICS.values())
 
+    if not Path(path).is_file():
+        raise FileNotFoundError(f"Custom metrics file not found: {path}")
+
     spec = importlib.util.spec_from_file_location("custom_metrics_module", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load custom metrics from: {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules["custom_metrics_module"] = module
     spec.loader.exec_module(module)
 
     # Look for METRICS list first
     if hasattr(module, "METRICS"):
-        return module.METRICS
+        return list(module.METRICS)
 
     # Otherwise, collect all functions with a _is_metric attribute
     metrics = []
@@ -114,14 +156,19 @@ def metric(name: str = "", description: str = "") -> Callable:
 
 
 def run_custom_metrics(
-    metrics: List[CustomMetric],
-    eval_results: List[EvalResult],
-) -> List[ScoreResult]:
-    """Run custom metric functions against eval results."""
+    metrics: list[CustomMetric],
+    eval_results: list[EvalResult],
+) -> list[ScoreResult]:
+    """Run custom metric functions against eval results.
+
+    A metric that raises is reported and skipped for that item rather than
+    aborting the run: these are user plugins, and one bad plugin should not
+    discard the scores of the others.
+    """
     score_results = []
 
     for r in eval_results:
-        scores: Dict[str, float] = {}
+        scores: dict[str, float] = {}
         for m in metrics:
             try:
                 score = m.fn(
@@ -131,7 +178,7 @@ def run_custom_metrics(
                     context=r.qa_pair.context,
                 )
                 scores[m.name] = float(score)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - plugin boundary, see docstring
                 print(f"  Warning: metric '{m.name}' failed for [{r.qa_pair.id}]: {e}")
 
         score_results.append(

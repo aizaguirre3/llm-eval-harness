@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import warnings
 from dataclasses import dataclass
-from typing import Dict, List
 
 from langchain_anthropic import ChatAnthropic
 from ragas import evaluate
@@ -28,7 +27,7 @@ class ScoreResult:
     question: str
     expected_answer: str
     actual_answer: str
-    scores: Dict[str, float]
+    scores: dict[str, float]
 
 
 class RagasScorer:
@@ -48,7 +47,7 @@ class RagasScorer:
             context_recall,
         ]
 
-    def _build_dataset(self, eval_results: List[EvalResult]) -> EvaluationDataset:
+    def _build_dataset(self, eval_results: list[EvalResult]) -> EvaluationDataset:
         samples = []
         for r in eval_results:
             samples.append(
@@ -61,7 +60,7 @@ class RagasScorer:
             )
         return EvaluationDataset(samples=samples)
 
-    def score(self, eval_results: List[EvalResult]) -> List[ScoreResult]:
+    def score(self, eval_results: list[EvalResult]) -> list[ScoreResult]:
         dataset = self._build_dataset(eval_results)
 
         ragas_result = evaluate(

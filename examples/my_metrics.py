@@ -8,8 +8,7 @@ Each metric function receives (question, expected_answer, actual_answer, context
 and should return a float between 0 and 1.
 """
 
-from src.scorers.custom_metrics import CustomMetric, metric
-
+from src.scorers.custom_metrics import metric
 
 # ── Option 1: Use the @metric decorator ─────────────────────────────────
 
@@ -31,6 +30,8 @@ def conciseness(question: str, expected_answer: str, actual_answer: str, context
 
 # ── Option 2: Define a METRICS list (uncomment to use instead) ──────────
 
+# from src.scorers.custom_metrics import CustomMetric
+#
 # METRICS = [
 #     CustomMetric(
 #         name="my_metric",
